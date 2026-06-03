@@ -1,0 +1,56 @@
+
+
+def run_palm_reading(image_path: str = None, upload: bool = False):
+    """
+    Pipeline chính.
+    - upload=True  → upload ảnh mới từ máy tính
+    - image_path   → dùng ảnh có sẵn trên Colab
+    """
+ 
+    if upload:
+        image_path = upload_image()
+    elif image_path is None:
+        image_path = CFG.image_path
+    print(f"\n📸 Ảnh đầu vào: {image_path}")
+
+    print("🖐️  Khởi tạo MediaPipe...")
+    detector = init_mediapipe()
+
+
+    print("✂️  Đang cắt vùng ROI...")
+    crops, illus = process_image(image_path, detector)
+    print("   → Crop 4 vùng thành công!")
+
+    print("\n🧠 Tải và dự đoán CNN...")
+    manager.load_all()
+    probs = manager.predict(crops)
+    for k, v in probs.items():
+        print(f"   {LABELS_VI[k]:12s}: N={v['ngan']:.3f}  TB={v['trung_binh']:.3f}  D={v['dai']:.3f}")
+
+
+    crisp = manager.crisp_all(probs)
+    print("\n⚙️  Crisp values:", {k: f"{v:.3f}" for k,v in crisp.items()})
+
+
+    print("🔮 Chạy Fuzzy Logic...")
+    scores = fuzzy_engine.compute(crisp)
+    print(f"   Sức khỏe={scores['suc_khoe']:.2f}  "
+          f"Tình cảm={scores['tinh_cam']:.2f}  "
+          f"Sự nghiệp={scores['cong_danh']:.2f}")
+
+    print("\n📊 Vẽ biểu đồ...")
+    save_img = os.path.join(CFG.output_dir, "result_viz.png")
+    fig = visualize(crops, illus, probs, scores, save_path=save_img)
+
+ 
+    report_text = interpret_results(scores, probs)
+
+
+    json_path = export_report(scores, probs, crisp, image_path, fig)
+    print(f"\n💾 Báo cáo JSON: {json_path}")
+
+    return {"scores": scores, "probs": probs, "crisp": crisp}
+
+
+
+result = run_palm_reading(image_path='/content/myhand.jpg')
