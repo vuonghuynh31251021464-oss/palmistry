@@ -1,0 +1,50 @@
+
+
+class ModelManager:
+    """Quản lý tải và dự đoán 4 CNN models. Lazy-load & cache."""
+
+    CLASSES = ['ngan', 'trung_binh', 'dai']
+
+    def __init__(self, config: Config):
+        self.cfg = config
+        self._models: dict[str, tf.keras.Model] = {}
+
+    def _load_one(self, key: str) -> tf.keras.Model:
+        path = self.cfg.get_model_path(key)
+        if not Path(path).exists():
+            raise FileNotFoundError(f"Model không tìm thấy: {path}")
+        log.info("Loading %s ...", path)
+        return tf.keras.models.load_model(path)
+
+    def load_all(self):
+        for key in self.cfg.model_paths:
+            if key not in self._models:
+                self._models[key] = self._load_one(key)
+        log.info("✅ Tải xong %d models.", len(self._models))
+
+    @staticmethod
+    def _preprocess(crop_rgb: np.ndarray) -> np.ndarray:
+        return np.expand_dims(crop_rgb.astype(np.float32) / 255.0, axis=0)
+
+    def predict(self, crops: dict) -> dict[str, dict[str, float]]:
+        """Trả về xác suất {key: {class: prob}}"""
+        results = {}
+        for key in self.cfg.model_paths:
+            if key not in self._models:
+                self._models[key] = self._load_one(key)
+            x = self._preprocess(crops[key])
+            pred = self._models[key].predict(x, verbose=0)[0]
+            results[key] = {c: float(p) for c, p in zip(self.CLASSES, pred)}
+        return results
+
+    @staticmethod
+    def crisp_weight(prob: dict) -> float:
+        """Chuyển xác suất → crisp value [0,1] cho fuzzy."""
+        return prob['ngan']*0.0 + prob['trung_binh']*0.5 + prob['dai']*1.0
+
+    def crisp_all(self, probs: dict) -> dict[str, float]:
+        return {k: self.crisp_weight(v) for k, v in probs.items()}
+
+
+manager = ModelManager(CFG)
+print("✅ ModelManager khởi tạo. Gọi manager.load_all() để tải models.")
