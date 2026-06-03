@@ -1,0 +1,112 @@
+
+
+_MEDIAPIPE_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+)
+
+def init_mediapipe(model_path='hand_landmarker.task', num_hands=1):
+    if not Path(model_path).exists():
+        log.info("Đang tải model MediaPipe...")
+        urllib.request.urlretrieve(_MEDIAPIPE_URL, model_path)
+        log.info("Tải xong: %s", model_path)
+    opts = vision.HandLandmarkerOptions(
+        base_options=python.BaseOptions(model_asset_path=model_path),
+        num_hands=num_hands,
+    )
+    return vision.HandLandmarker.create_from_options(opts)
+
+
+def safe_crop(cx, cy, w, h, img) -> tuple[Optional[np.ndarray], Optional[tuple]]:
+    x1 = max(0, cx - w // 2);  y1 = max(0, cy - h // 2)
+    x2 = min(img.shape[1], cx + w // 2);  y2 = min(img.shape[0], cy + h // 2)
+    patch = img[y1:y2, x1:x2]
+    if patch.size == 0:
+        return None, None
+    return cv2.resize(patch, (CFG.crop_size, CFG.crop_size)), (x1, y1, x2, y2)
+
+
+def _rotate_to_upright(img_rgb, detector):
+    """Xoay ảnh sao cho bàn tay thẳng đứng. Trả về (ảnh xoay, landmarks)."""
+    h, w = img_rgb.shape[:2]
+    mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+    res = detector.detect(mp_img)
+    if not res.hand_landmarks:
+        raise ValueError("Không phát hiện bàn tay trong ảnh!")
+
+    lm = res.hand_landmarks[0]
+    pt0 = np.array([lm[0].x * w, lm[0].y * h])
+    pt9 = np.array([lm[9].x * w, lm[9].y * h])
+    angle = 90 - np.degrees(np.arctan2(-(pt9[1] - pt0[1]), pt9[0] - pt0[0]))
+
+    M = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.0)
+    rotated = cv2.warpAffine(img_rgb, M, (w, h))
+
+
+    mp_rot = mp.Image(image_format=mp.ImageFormat.SRGB, data=rotated)
+    res2 = detector.detect(mp_rot)
+    if not res2.hand_landmarks:
+        raise ValueError("Không phát hiện bàn tay sau khi xoay!")
+
+    lm2 = np.array([[int(p.x * w), int(p.y * h)] for p in res2.hand_landmarks[0]])
+    return rotated, lm2
+
+
+def process_image(image_path: str, detector) -> tuple[dict, np.ndarray]:
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(f"Không tìm thấy ảnh: '{image_path}'")
+
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    rotated, lm = _rotate_to_upright(img_rgb, detector)
+
+    ps = int(np.linalg.norm(lm[9] - lm[0]))  
+    bs = int(ps * 0.6)
+
+  
+    roi_defs = {
+        'sinh_dao':  (int(0.35*lm[0][0]+0.45*lm[5][0]+0.20*lm[9][0]),
+                      int(0.40*lm[0][1]+0.40*lm[5][1]+0.20*lm[9][1]),
+                      int(ps*0.55), int(ps*0.65)),
+        'tam_dao':   (int((lm[5][0]+lm[17][0])/2),
+                      int(0.20*lm[0][1]+0.80*lm[9][1]),
+                      bs, bs),
+        'tri_dao':   (int(0.60*lm[5][0]+0.40*lm[17][0]),
+                      int(0.42*lm[0][1]+0.58*lm[9][1]),
+                      int(ps*0.75), int(ps*0.45)),
+        'su_nghiep': (int(0.65*lm[9][0]+0.35*lm[13][0]),
+                      int(0.52*lm[0][1]+0.48*lm[9][1]),
+                      int(ps*0.26), int(ps*0.52)),
+    }
+
+    crops, boxes = {}, {}
+    for name, (cx, cy, w, h) in roi_defs.items():
+        crop, box = safe_crop(cx, cy, w, h, rotated)
+        if crop is None:
+            raise ValueError(f"Crop vùng '{name}' thất bại — nằm ngoài ảnh!")
+        crops[name] = crop
+        boxes[name] = box
+
+
+    illus = rotated.copy()
+    colors = {'sinh_dao':(255,80,80),'tam_dao':(80,200,80),
+              'tri_dao':(80,80,255),'su_nghiep':(220,80,220)}
+    labels = {'sinh_dao':'Sinh','tam_dao':'Tâm','tri_dao':'Trí','su_nghiep':'Nghiệp'}
+    for name, box in boxes.items():
+        x1,y1,x2,y2 = box
+        cv2.rectangle(illus, (x1,y1), (x2,y2), colors[name], 3)
+        cv2.putText(illus, labels[name], (x1+4, y1+22),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, colors[name], 2)
+
+    return crops, illus
+
+
+from google.colab import files as colab_files
+
+def upload_image() -> str:
+    uploaded = colab_files.upload()
+    path = list(uploaded.keys())[0]
+    log.info("Đã upload: %s", path)
+    return path
+
+print("✅ Cell 3 sẵn sàng. Gọi upload_image() để upload ảnh tay.")
