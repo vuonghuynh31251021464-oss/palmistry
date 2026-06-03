@@ -1,0 +1,88 @@
+
+import skfuzzy as fuzz
+
+class FuzzyPalmReader:
+    def __init__(self):
+        self._sim = None
+
+    def _build(self):
+        universe = np.arange(0, 1.01, 0.01)
+        score_u  = np.arange(0, 11, 1)
+
+        inputs = {k: ctrl.Antecedent(universe, k)
+                  for k in ['sinh_dao','tam_dao','tri_dao','su_nghiep']}
+        suc_khoe  = ctrl.Consequent(score_u, 'suc_khoe',  defuzzify_method='centroid')
+        tinh_cam  = ctrl.Consequent(score_u, 'tinh_cam',  defuzzify_method='centroid')
+        cong_danh = ctrl.Consequent(score_u, 'cong_danh', defuzzify_method='centroid')
+
+        for v in inputs.values():
+            v['ngan']       = fuzz.trimf(v.universe, [0.0, 0.0, 0.45])
+            v['trung_binh'] = fuzz.trimf(v.universe, [0.25, 0.5, 0.75])
+            v['dai']        = fuzz.trimf(v.universe, [0.55, 1.0, 1.0])
+
+        suc_khoe['kem']          = fuzz.trimf(score_u, [0, 0, 4])
+        suc_khoe['binh_thuong']  = fuzz.trimf(score_u, [3, 5, 7])
+        suc_khoe['tot']          = fuzz.trimf(score_u, [6, 10, 10])
+
+        tinh_cam['ly_tri']   = fuzz.trimf(score_u, [0, 0, 4])
+        tinh_cam['can_bang'] = fuzz.trimf(score_u, [3, 5, 7])
+        tinh_cam['cam_tinh'] = fuzz.trimf(score_u, [6, 10, 10])
+
+        cong_danh['bien_dong']  = fuzz.trimf(score_u, [0, 0, 4])
+        cong_danh['on_dinh']    = fuzz.trimf(score_u, [3, 5, 7])
+        cong_danh['thanh_cong'] = fuzz.trimf(score_u, [6, 10, 10])
+
+        sd, td, trd, sn = (inputs[k] for k in ['sinh_dao','tam_dao','tri_dao','su_nghiep'])
+        rules = [
+            ctrl.Rule(sd['ngan'],                     suc_khoe['kem']),
+            ctrl.Rule(sd['dai'],                      suc_khoe['tot']),
+            ctrl.Rule(sd['trung_binh'],               suc_khoe['binh_thuong']),
+            ctrl.Rule(sd['dai'] & sn['dai'],          suc_khoe['tot']),
+
+            ctrl.Rule(td['ngan'],                     tinh_cam['ly_tri']),
+            ctrl.Rule(td['dai'],                      tinh_cam['cam_tinh']),
+            ctrl.Rule(trd['ngan'] & td['trung_binh'], tinh_cam['ly_tri']),
+            ctrl.Rule(trd['dai']  & td['ngan'],       tinh_cam['ly_tri']),
+            ctrl.Rule(trd['dai']  & td['dai'],        tinh_cam['can_bang']),
+            ctrl.Rule(td['trung_binh'],               tinh_cam['can_bang']),
+
+            ctrl.Rule(sn['ngan'],                     cong_danh['bien_dong']),
+            ctrl.Rule(sn['dai'],                      cong_danh['on_dinh']),
+            ctrl.Rule(sn['dai']  & trd['dai'],        cong_danh['thanh_cong']),
+            ctrl.Rule(sn['ngan'] & trd['ngan'],       cong_danh['bien_dong']),
+            ctrl.Rule(sn['trung_binh'],               cong_danh['on_dinh']),
+        ]
+        return ctrl.ControlSystemSimulation(ctrl.ControlSystem(rules))
+
+    def compute(self, crisp: dict) -> dict:
+        if self._sim is None:
+            log.info("Đang xây dựng Fuzzy system...")
+            self._sim = self._build()
+
+
+        print("\n🔍 CRISP VALUES (CNN → Fuzzy input):")
+        for k, v in crisp.items():
+            bar = '█' * int(v * 20)
+            label = 'NGẮN' if v < 0.35 else 'DÀI' if v > 0.65 else 'TRUNG BÌNH'
+            print(f"  {k:12s}: {v:.4f}  |{bar:<20}|  {label}")
+
+        for k, v in crisp.items():
+            self._sim.input[k] = float(np.clip(v, 0.01, 0.99))
+        self._sim.compute()
+
+        scores = {
+            'suc_khoe':  self._sim.output['suc_khoe'],
+            'tinh_cam':  self._sim.output['tinh_cam'],
+            'cong_danh': self._sim.output['cong_danh'],
+        }
+
+        print("\n📊 FUZZY OUTPUT:")
+        for k, v in scores.items():
+            bar = '█' * int(v / 10 * 20)
+            print(f"  {k:12s}: {v:.2f}/10  |{bar:<20}|")
+
+        return scores
+
+
+fuzzy_engine = FuzzyPalmReader()
+print("✅ Cell 5 sẵn sàng.")
