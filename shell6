@@ -1,0 +1,96 @@
+
+
+LABELS_VI = {
+    'sinh_dao':'Sinh Đạo', 'tam_dao':'Tâm Đạo',
+    'tri_dao':'Trí Đạo', 'su_nghiep':'Sự Nghiệp',
+}
+
+def visualize(crops: dict, illus: np.ndarray,
+              probs: dict, scores: dict, save_path: str = None):
+
+    plt.rcParams.update({'font.family': 'DejaVu Sans', 'figure.facecolor': '#FAFAFA'})
+
+    fig = plt.figure(figsize=(20, 14))
+    gs = gridspec.GridSpec(3, 4, figure=fig, hspace=0.45, wspace=0.3)
+
+   
+    ax_illus = fig.add_subplot(gs[0, 0:2])
+    ax_illus.imshow(illus)
+    ax_illus.set_title("Ảnh chuẩn hóa + 4 vùng ROI", fontsize=12, fontweight='bold')
+    ax_illus.axis('off')
+
+    roi_positions = [(0,2),(0,3),(1,0),(1,1)]
+    keys = list(LABELS_VI.keys())
+    crop_colors = ['#FF5050','#28C840','#4A8AFF','#CC3DCC']
+    for (r,c), key, color in zip(roi_positions, keys, crop_colors):
+        ax = fig.add_subplot(gs[r, c])
+        ax.imshow(crops[key])
+        p = probs[key]
+        ax.set_title(
+            f"{LABELS_VI[key]}\nN:{p['ngan']:.2f}  TB:{p['trung_binh']:.2f}  D:{p['dai']:.2f}",
+            fontsize=10, color=color, fontweight='bold'
+        )
+        for spine in ax.spines.values():
+            spine.set_edgecolor(color); spine.set_linewidth(2)
+        ax.set_xticks([]); ax.set_yticks([])
+
+    ax_radar = fig.add_subplot(gs[1, 2:4], polar=True)
+    score_labels = ['Sức khỏe', 'Tình cảm', 'Sự nghiệp']
+    vals = [scores['suc_khoe'], scores['tinh_cam'], scores['cong_danh']]
+    N = len(vals)
+    angles = [n / float(N) * 2 * np.pi for n in range(N)]
+    angles += angles[:1]; vals_plot = vals + [vals[0]]
+    ax_radar.plot(angles, vals_plot, 'o-', linewidth=2, color='#7F77DD')
+    ax_radar.fill(angles, vals_plot, alpha=0.25, color='#7F77DD')
+    ax_radar.set_xticks(angles[:-1])
+    ax_radar.set_xticklabels(score_labels, fontsize=11, fontweight='bold')
+    ax_radar.set_ylim(0, 10)
+    ax_radar.set_yticks([2,4,6,8,10])
+    ax_radar.set_yticklabels(['2','4','6','8','10'], fontsize=8)
+    ax_radar.set_title("Biểu đồ tổng hợp", fontsize=12, fontweight='bold', pad=15)
+
+
+    ax_bar = fig.add_subplot(gs[2, 0:2])
+    x = np.arange(len(keys)); bw = 0.25
+    colors_bar = ['#E74C3C', '#F39C12', '#27AE60']
+    class_names = ['Ngắn', 'Trung bình', 'Dài']
+    for i, (cls_key, color, label) in enumerate(
+            zip(['ngan','trung_binh','dai'], colors_bar, class_names)):
+        heights = [probs[k][cls_key] for k in keys]
+        ax_bar.bar(x + i*bw, heights, bw, label=label,
+                   color=color, alpha=0.85, edgecolor='white')
+    ax_bar.set_xticks(x + bw)
+    ax_bar.set_xticklabels([LABELS_VI[k] for k in keys], fontsize=10)
+    ax_bar.set_ylabel("Xác suất"); ax_bar.set_ylim(0, 1.05)
+    ax_bar.set_title("Phân phối xác suất CNN", fontsize=12, fontweight='bold')
+    ax_bar.legend(loc='upper right', fontsize=9)
+    ax_bar.grid(axis='y', alpha=0.3)
+
+    ax_sc = fig.add_subplot(gs[2, 2:4])
+    ax_sc.axis('off')
+    sc_data = [
+        ("💪 Sức khỏe", scores['suc_khoe'], '#1D9E75'),
+        ("💗 Tình cảm", scores['tinh_cam'], '#D4537E'),
+        ("🌟 Sự nghiệp", scores['cong_danh'], '#534AB7'),
+    ]
+    for i, (lbl, val, clr) in enumerate(sc_data):
+        y = 0.75 - i * 0.32
+        ax_sc.add_patch(plt.Rectangle((0.05, y), 0.9, 0.25,
+            transform=ax_sc.transAxes, color=clr, alpha=0.12,
+            clip_on=False, zorder=0))
+        ax_sc.text(0.15, y+0.14, lbl, transform=ax_sc.transAxes,
+                   fontsize=13, fontweight='bold', color=clr, va='center')
+        bar_len = val / 10 * 0.65
+        ax_sc.add_patch(plt.Rectangle((0.15, y+0.04), bar_len, 0.06,
+            transform=ax_sc.transAxes, color=clr, alpha=0.7, clip_on=False))
+        ax_sc.text(0.83, y+0.14, f"{val:.1f}/10", transform=ax_sc.transAxes,
+                   fontsize=14, fontweight='bold', color=clr, va='center')
+
+    if save_path:
+        fig.savefig(save_path, bbox_inches='tight', dpi=150)
+        log.info("✅ Đã lưu: %s", save_path)
+    plt.show()
+    return fig
+
+
+print("✅ Cell 6 sẵn sàng.")
