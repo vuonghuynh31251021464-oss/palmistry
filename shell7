@@ -1,0 +1,74 @@
+
+
+def interpret_results(scores: dict, probs: dict = None) -> str:
+    sk, tc, cd = scores['suc_khoe'], scores['tinh_cam'], scores['cong_danh']
+    overall = (sk + tc + cd) / 3
+
+    lines = ["", "═"*60,
+             "  BẢN THUẬT XEM TƯỚNG TAY — KẾT QUẢ PHÂN TÍCH AI",
+             "═"*60]
+
+
+    if sk >= 7:
+        msg = "Năng lượng rất dồi dào. Sinh lực bền bỉ, dễ đạt mục tiêu dài hạn."
+    elif sk >= 4.5:
+        msg = "Thể trạng ở mức trung bình. Nên chú ý ăn uống, ngủ đủ giấc."
+    else:
+        msg = "Dễ bị mệt mỏi. Hãy ưu tiên nghỉ ngơi và kiểm tra sức khỏe định kỳ."
+    lines.append(f"\n  💪 Sinh Đạo — Sức khỏe  [{sk:.1f}/10]\n   → {msg}")
+
+
+    if tc >= 7:
+        msg = "Tình cảm mạnh mẽ, chân thành. Trái tim thường dẫn lối quyết định."
+    elif tc >= 4.5:
+        msg = "Cân bằng giữa lý trí và tình cảm. Dễ hòa hợp trong các mối quan hệ."
+    else:
+        msg = "Rất lý trí và quyết đoán. Đôi khi nên chú ý hơn đến cảm xúc người thân."
+    lines.append(f"\n  💗 Tâm & Trí Đạo — Tình cảm  [{tc:.1f}/10]\n   → {msg}")
+
+    if cd >= 7.5:
+        msg = "Con đường sự nghiệp rộng mở. Logic + bền bỉ = tiềm năng thành công lớn."
+    elif cd >= 4.5:
+        msg = "Sự nghiệp ổn định, ít biến động. Cuộc sống an toàn và bình yên."
+    else:
+        msg = "Có thể gặp thăng trầm trong công việc. Học cách kiên nhẫn và thích nghi."
+    lines.append(f"\n  🌟 Sự Nghiệp — Công danh  [{cd:.1f}/10]\n   → {msg}")
+
+
+    tier = "Rất tốt 🌟" if overall>=7 else "Khá tốt ✨" if overall>=5 else "Cần cải thiện 💪"
+    lines += ["", "─"*60, f"  Điểm tổng thể: {overall:.1f}/10  —  {tier}", "═"*60, ""]
+
+    report = "\n".join(lines)
+    print(report)
+    return report
+
+
+def export_report(scores: dict, probs: dict, crisp: dict,
+                  image_path: str, fig=None) -> str:
+    """Lưu JSON report + ảnh visualize ra output_dir."""
+    from datetime import datetime
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base = os.path.join(CFG.output_dir, f"palm_report_{ts}")
+
+    data = {
+        "timestamp": ts,
+        "image_path": image_path,
+        "probabilities": probs,
+        "crisp_values": crisp,
+        "scores": scores,
+        "overall": round(sum(scores.values()) / len(scores), 2),
+    }
+    json_path = base + ".json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    log.info("✅ Đã lưu báo cáo JSON: %s", json_path)
+
+    if fig is not None:
+        img_path = base + ".png"
+        fig.savefig(img_path, bbox_inches='tight', dpi=150)
+        log.info("✅ Đã lưu ảnh: %s", img_path)
+
+    return json_path
+
+
+print("✅ Cell 7 sẵn sàng.")
