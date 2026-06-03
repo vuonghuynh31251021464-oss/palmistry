@@ -1,0 +1,40 @@
+
+import os, logging, json, urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import tensorflow as tf
+import skfuzzy as fuzz
+from skfuzzy import control as ctrl
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+
+logging.basicConfig(level=logging.INFO, format='%(levelname)s | %(message)s')
+log = logging.getLogger("PalmReader")
+
+
+@dataclass
+class Config:
+    image_path:  str   = '/content/myhand.jpg'
+    model_dir:   str   = '/content'          
+    output_dir:  str   = '/content/output'
+    model_paths: dict  = field(default_factory=lambda: {
+        'sinh_dao':  'sinhdao30.h5',
+        'tam_dao':   'tamdao30.h5',
+        'tri_dao':   'tridao30.h5',
+        'su_nghiep': 'sunghiep30.h5',   
+    })
+    crop_size:   int   = 200
+    num_hands:   int   = 1
+
+    def get_model_path(self, key: str) -> str:
+        return os.path.join(self.model_dir, self.model_paths[key])
+
+CFG = Config()
+os.makedirs(CFG.output_dir, exist_ok=True)
+print("✅ Config sẵn sàng. Output dir:", CFG.output_dir)
